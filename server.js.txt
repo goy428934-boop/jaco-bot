@@ -1,0 +1,177 @@
+const express = require('express');
+const TelegramBot = require('node-telegram-bot-api');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// توكن البوت الخاص بك
+const TELEGRAM_TOKEN = '8839325381:AAGIiHq9olz7pRawiXuFaTjErH3twm8O9rI';
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+
+// قائمة الحسابات المجهزة مع الكوكيز والمخزون الافتراضي
+let accountsList = [
+  {
+    username: 'sultanft1',
+    uid: '3027287702',
+    cookie: '_gcl_au=1.1.752444732.1785414194; SUB=_2Ayj4Caw_rrQvCqgnCUDeQpXvyEKda01MpTrvloXqnqw2s3Sz5ApKlvasGcirW4DpqXfTk8MNHZqEdTsIcvOJnuL2; uid=3027287702;',
+    glove: 3, magnet: 2, spray: 5, time: 1
+  },
+  {
+    username: 'sultanft2',
+    uid: '3027287708',
+    cookie: '_gcl_au=1.1.752444732.1785414194; SUB=_2Ayj4CaeLrrQvCqgnCUDeQpXvyEida01MpTJbloXqnqw2s3Sz5Ap4lvasGcirW7amIAmnXEvmhEyYcdE_W4WulhpD; uid=3027287708;',
+    glove: 1, magnet: 3, spray: 2, time: 4
+  },
+  {
+    username: 'sultanft3',
+    uid: '3027287710',
+    cookie: '_gcl_au=1.1.752444732.1785414194; SUB=_2Ayj4CaS0rrQvCqgnCUDeQpXvyUCda01MpTNkloXqnqw2s3Sz5BFZlvasGcirWw84RoRkgbM2ngyigOtTSS7uTqKY; uid=3027287710;',
+    glove: 2, magnet: 1, spray: 0, time: 2
+  },
+  {
+    username: 'sultanft4',
+    uid: '3027199543',
+    cookie: '_gcl_au=1.1.752444732.1785414194; SUB=_2Ayj4CaWarrQvCqgnCUDdQ5vtzEOda01MpTBKloXqnqw2s3Sz5EZWlvasGcirWx9ZesBtReFO3she3k5iy9M0F0n6; uid=3027199543;',
+    glove: 5, magnet: 0, spray: 3, time: 3
+  },
+  {
+    username: 'sultanft5',
+    uid: '3027288019',
+    cookie: '_gcl_au=1.1.752444732.1785414194; SUB=_2Ayj4CZg_rrQvCqgnCUDeQproyUmda01MpTbvloXqnqw2s3Sz5ENflvasGcirW2dpueWWSlZrWt7lFRwAWuJEJ2jU; uid=3027288019;',
+    glove: 0, magnet: 4, spray: 1, time: 2
+  }
+];
+
+// دالة تأخير تنفيذ الأوامر
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// تخزين خيارات المستخدم المؤقتة
+const userState = {};
+
+// 1️⃣ القائمة الرئيسية لبدء البوت
+bot.onText(/\/start/, (msg) => {
+  sendMainMenu(msg.chat.id);
+});
+
+function sendMainMenu(chatId) {
+  const opts = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '📊 عرض مخزون الأدوات بالحسابات', callback_data: 'view_inventory' }
+        ],
+        [
+          { text: '🥊 تنزيل قفاز', callback_data: 'select_item_glove' },
+          { text: '🧲 تنزيل مغناطيس', callback_data: 'select_item_magnet' }
+        ],
+        [
+          { text: '🧴 تنزيل بخاخ', callback_data: 'select_item_spray' },
+          { text: '⏱️ تنزيل وقت', callback_data: 'select_item_time' }
+        ]
+      ]
+    }
+  };
+  bot.sendMessage(chatId, '🎮 **لوحة التحكم بالداعمات لجاكو**\nاختر العملية التي تريد تنفيذها من الأزرار:', { parse_mode: 'Markdown', ...opts });
+}
+
+// 2️⃣ الاستجابة لأزرار البوت
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  // عرض المخزون لكل حساب
+  if (data === 'view_inventory') {
+    let text = '📦 **مخزون الأدوات الحالي في جميع الحسابات:**\n\n';
+    accountsList.forEach(acc => {
+      text += `👤 **${acc.username}**\n`;
+      text += `├ 🥊 قفاز: ${acc.glove}\n`;
+      text += `├ 🧲 مغناطيس: ${acc.magnet}\n`;
+      text += `├ 🧴 بخاخ: ${acc.spray}\n`;
+      text += `└ ⏱️ وقت: ${acc.time}\n\n`;
+    });
+    
+    bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+    bot.answerCallbackQuery(query.id);
+  }
+
+  // اختيار الأداة
+  else if (data.startsWith('select_item_')) {
+    const item = data.replace('select_item_', '');
+    userState[chatId] = { item: item };
+
+    // إنشاء أزرار اختيار الحسابات
+    const accountButtons = accountsList.map(acc => [{ text: `👤 ${acc.username}`, callback_data: `select_acc_${acc.username}` }]);
+    accountButtons.unshift([{ text: '🌐 جميع الحسابات الـ 5', callback_data: 'select_acc_all' }]);
+
+    bot.sendMessage(chatId, `🎯 اختر الحساب المُنَفِّذ لتنزيل **[${getItemName(item)}]**:`, {
+      reply_markup: { inline_keyboard: accountButtons },
+      parse_mode: 'Markdown'
+    });
+    bot.answerCallbackQuery(query.id);
+  }
+
+  // اختيار الحساب
+  else if (data.startsWith('select_acc_')) {
+    const accTarget = data.replace('select_acc_', '');
+    if (userState[chatId]) {
+      userState[chatId].target = accTarget;
+    }
+
+    // خيارات التوقيت والتأخير الزمني
+    const delayOpts = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⚡ تنزيل فوراً (0 ثانية)', callback_data: 'exec_delay_0' }],
+          [{ text: '⏱️ بعد 2 ثانية', callback_data: 'exec_delay_2' }],
+          [{ text: '⏱️ بعد 5 ثواني', callback_data: 'exec_delay_5' }],
+          [{ text: '⏱️ بعد 10 ثواني', callback_data: 'exec_delay_10' }]
+        ]
+      }
+    };
+    bot.sendMessage(chatId, `⏳ اختر التوقيت أو التأخير الزمني قبل التنزيل:`, delayOpts);
+    bot.answerCallbackQuery(query.id);
+  }
+
+  // التنفيذ الفعلي وخصم الأدوات
+  else if (data.startsWith('exec_delay_')) {
+    const delaySec = parseInt(data.replace('exec_delay_', ''));
+    const state = userState[chatId] || { item: 'glove', target: 'all' };
+    const itemName = getItemName(state.item);
+
+    bot.sendMessage(chatId, `🚀 جاري تحضير طلب تنزيل **[${itemName}]**...\n👤 الحساب: \`${state.target}\`\n⏳ التأخير: \`${delaySec}\` ثواني`, { parse_mode: 'Markdown' });
+    
+    if (delaySec > 0) {
+      await delay(delaySec * 1000);
+    }
+
+    // تحديد الحسابات المستهدفة
+    let targets = accountsList;
+    if (state.target !== 'all') {
+      targets = accountsList.filter(acc => acc.username === state.target);
+    }
+
+    let successCount = 0;
+    for (let acc of targets) {
+      if (acc[state.item] > 0) {
+        acc[state.item] -= 1; // خصم الأداة من الحساب
+        successCount++;
+        bot.sendMessage(chatId, `✅ **[${acc.username}]** تم تنزيل ${itemName} بنجاح!\nالمتبقي بالحساب: \`${acc[state.item]}\``, { parse_mode: 'Markdown' });
+      } else {
+        bot.sendMessage(chatId, `⚠️ **[${acc.username}]** لا يملك رصيد كافي من ${itemName}!`, { parse_mode: 'Markdown' });
+      }
+      await delay(2000); // فاصل ثانيتين بين كل حساب لتفادي الباند
+    }
+
+    bot.sendMessage(chatId, `🎉 **اكتملت العملية!** تم التنزيل بواسطة (${successCount}) حساب.`, { parse_mode: 'Markdown' });
+    bot.answerCallbackQuery(query.id);
+  }
+});
+
+function getItemName(key) {
+  const names = { glove: '🥊 قفاز', magnet: '🧲 مغناطيس', spray: '🧴 بخاخ', time: '⏱️ وقت' };
+  return names[key] || key;
+}
+
+// سيرفر إكسبريس خفيف لإبقاء الخدمة متصلة 24/7 عند الرفع على السحاب
+app.get('/', (req, res) => res.send('Jaco Bot is Alive and Running 24/7!'));
+app.listen(PORT, () => console.log(`🟢 السيرفر يعمل على البورت: ${PORT}`));
